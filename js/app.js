@@ -31,17 +31,55 @@ const LOTUS_COLLEGES = [
   'كلية الصيدلة'
 ];
 
+function cleanNationalId(nid) {
+  if (nid === null || nid === undefined) return '';
+  let str = String(nid).trim();
+  const easternDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+  for (let i = 0; i < 10; i++) {
+    str = str.split(easternDigits[i]).join(String(i));
+  }
+  str = str.replace(/\.0+$/, '');
+  str = str.replace(/\D/g, '');
+  return str;
+}
+
+function cleanStudentCode(code) {
+  if (code === null || code === undefined) return '';
+  let str = String(code).trim();
+  const easternDigits = ['٠','١','٢','٣','٤','٥','٦','٧','٨','٩'];
+  for (let i = 0; i < 10; i++) {
+    str = str.split(easternDigits[i]).join(String(i));
+  }
+  str = str.replace(/\.0+$/, '');
+  return str.replace(/\s+/g, '');
+}
+
+function cleanDateStr(d) {
+  if (d === null || d === undefined || d === '') return '';
+  if (typeof d === 'number') {
+    try {
+      const jsDate = new Date(Math.round((d - 25569) * 86400 * 1000));
+      return jsDate.toISOString().split('T')[0];
+    } catch(e) { return String(d); }
+  }
+  let str = String(d).trim();
+  str = str.replace(/\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM|am|pm)?/i, '').trim();
+  return str;
+}
+
 function normalizeCollegeName(c) {
   if (!c) return '';
   const s = String(c).trim();
   if (s.includes('تمريض')) return 'كلية التمريض';
-  if (s.includes('حاسبات') || s.includes('معلومات') || s.includes('ذكاء اصطناعي')) return 'كلية الحاسبات والذكاء الاصطناعي';
-  if (s.includes('صحية') || s.includes('تكنولوجيا العلوم') || s.includes('صحيه')) return 'كلية العلوم الصحية التطبيقية';
-  if (s.includes('إدارة') || s.includes('ادارة') || s.includes('أعمال') || s.includes('اعمال') || s.includes('اقتصاد')) return 'كلية إدارة الأعمال';
-  if (s.includes('أسنان') || s.includes('اسنان')) return 'كلية طب الفم والأسنان';
+  if (s.includes('حاسبات') || s.includes('معلومات') || s.includes('ذكاء') || s.includes('برمجيات') || s.includes('سيبراني') || s.includes('شبكات')) {
+    return 'كلية الحاسبات والذكاء الاصطناعي';
+  }
+  if (s.includes('صحية') || s.includes('صحيه') || s.includes('تكنولوجيا العلوم') || s.includes('علوم صحية')) return 'كلية العلوم الصحية التطبيقية';
+  if (s.includes('إدارة') || s.includes('ادارة') || s.includes('أعمال') || s.includes('اعمال') || s.includes('اقتصاد') || s.includes('محاسبة') || s.includes('تسويق')) return 'كلية إدارة الأعمال';
+  if (s.includes('أسنان') || s.includes('اسنان') || s.includes('طب فم')) return 'كلية طب الفم والأسنان';
   if (s.includes('علاج')) return 'كلية العلاج الطبيعي';
   if (s.includes('هندسة') || s.includes('هندسه')) return 'كلية الهندسة';
-  if (s.includes('صيدلة') || s.includes('صيدله')) return 'كلية الصيدلة';
+  if (s.includes('صيدلة') || s.includes('صيدله') || s.includes('فارما')) return 'كلية الصيدلة';
   return s;
 }
 
@@ -127,13 +165,16 @@ const AppState = {
   inactivityTimer: null,
   inactivityLimitMinutes: 30
 };
+if (typeof window !== 'undefined') {
+  window.AppState = AppState;
+}
 
 // ============================================================================
 // محرك التحليل والتحقق من الرقم القومي المصري (Egyptian National ID Parser)
 // ============================================================================
 function parseEgyptianNationalId(idStr) {
-  if (!idStr || typeof idStr !== 'string') return { isValid: false, error: 'الرقم غير محدد' };
-  const cleanId = idStr.trim();
+  if (idStr === null || idStr === undefined || idStr === '') return { isValid: false, error: 'الرقم غير محدد' };
+  const cleanId = cleanNationalId(idStr);
   if (!/^\d{14}$/.test(cleanId)) {
     return { isValid: false, error: 'يجب أن يتكون الرقم القومي من 14 رقماً' };
   }
@@ -1372,6 +1413,15 @@ function openStudentDossier(identifier) {
   const certBtn = document.getElementById('btnPrintStudentCert');
   if (certBtn) {
     certBtn.onclick = () => printIndividualCertificate(student);
+  }
+
+  // زر تعديل بيانات الطالب مباشرة من البطاقة
+  const editBtn = document.getElementById('btnEditStudentFromDossier');
+  if (editBtn) {
+    editBtn.onclick = () => {
+      closeModal('studentDossierModal');
+      openEditStudentModal(student.nationalId || student.code);
+    };
   }
 
   modal.classList.add('active');
@@ -2715,7 +2765,28 @@ function handleFileUpload(file, uploadType) {
       const workbook = XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-      const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+      // الكشف التلقائي عن سطر العناوين في حال وجود أسطر فارغة أو ترويسات في أعلى الملف
+      const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      let headerRowIndex = -1;
+      for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
+        const rowStr = (rawRows[r] || []).map(c => normalizeKey(String(c))).join(' ');
+        if (rowStr.includes('القومي') || rowStr.includes('قومي') || 
+            rowStr.includes('اسمالطالب') || rowStr.includes('الاسم') || 
+            rowStr.includes('كود') || rowStr.includes('الكليه') || 
+            rowStr.includes('النتيجه') || rowStr.includes('ناجح') || 
+            rowStr.includes('الدوره') || rowStr.includes('nationalid')) {
+          headerRowIndex = r;
+          break;
+        }
+      }
+
+      let jsonRows;
+      if (headerRowIndex > 0) {
+        jsonRows = XLSX.utils.sheet_to_json(worksheet, { range: headerRowIndex, defval: '' });
+      } else {
+        jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      }
 
       if (!jsonRows || jsonRows.length === 0) {
         showToast('الملف المرفوع فارغ ولا يحتوي على صفوف بيانات!', 'warning');
@@ -2753,183 +2824,157 @@ function normalizeColumnKeys(row) {
 function validateAndPreviewUploadedRows(rows, uploadType) {
   const valid = [];
   const invalid = [];
-  const duplicates = [];
-
-  const existingNids = new Set(AppState.students.map(s => String(s.nationalId || '').trim()).filter(Boolean));
-  const existingCodes = new Set(AppState.students.map(s => String(s.code || '').trim()).filter(Boolean));
 
   rows.forEach((row, idx) => {
     const norm = normalizeColumnKeys(row);
 
-    if (uploadType === 'students') {
-      // استخلاص الحقول (متوافق مع ملفات كشوفات جامعة اللوتس الرسمية)
-      const name = norm['الاسمبالكامل'] || norm['اسمالطالب'] || norm['اسم'] || norm['الاسم'] || norm['name'] || '';
-      let nationalId = String(norm['الرقمالقومي'] || norm['رقمقومي'] || norm['القومي'] || norm['nationalid'] || norm['nid'] || '').trim();
-      let code = String(norm['كودالطالب'] || norm['كود'] || norm['الكود'] || norm['الرقمالجامعي'] || norm['code'] || norm['id'] || '').trim();
-      let genderRaw = norm['النوع'] || norm['الجنس'] || norm['النوعالمجموعه'] || norm['gender'] || '';
-      let collegeRaw = norm['الكليه'] || norm['تخصصرئيسي'] || norm['التخصص'] || norm['كليه'] || norm['college'] || '';
-      let specRaw = norm['تخصصرئيسي'] || norm['التخصص'] || norm['الشعبه'] || '';
-      let yearRaw = norm['الفرقه'] || norm['الفرقهالدراسيه'] || norm['السنه'] || norm['السنهالدراسيه'] || norm['year'] || norm['level'] || '';
-      let academicYear = norm['العامالدراسي'] || norm['العامالجامعي'] || norm['العام'] || norm['academicyear'] || '2024/2025';
-      let phone = String(norm['رقمالهاتف'] || norm['الهاتف'] || norm['الموبايل'] || norm['phone'] || norm['mobile'] || '');
+    // 1. استخراج المعرفات الأساسية (الرقم القومي وكود الطالب) بعد التنظيف الكامل
+    const rawNid = norm['الرقمالقومي'] || norm['رقمقومي'] || norm['القومي'] || norm['الرقمالوطني'] || norm['nationalid'] || norm['nid'] || '';
+    const nationalId = cleanNationalId(rawNid);
 
-      // التحقق من وجود اسم الطالب
-      if (!name) {
-        invalid.push({ rowNumber: idx + 2, reason: 'اسم الطالب مفقود', rowData: row });
-        return;
-      }
+    const rawCode = norm['كودالطالب'] || norm['كود'] || norm['الكود'] || norm['الرقمالجامعي'] || norm['رقمجلوس'] || norm['code'] || norm['id'] || '';
+    const code = cleanStudentCode(rawCode);
 
-      // فحص الرقم القومي واستنتاج النوع
-      let gender = 'male';
-      if (nationalId) {
-        const nidParsed = parseEgyptianNationalId(nationalId);
-        if (!nidParsed.isValid) {
-          invalid.push({ rowNumber: idx + 2, reason: `الرقم القومي غير صالح: ${nidParsed.error}`, rowData: row });
-          return;
-        }
-        gender = nidParsed.gender; // استخلاص النوع من الرقم القومي بدقة
-      } else if (!code) {
-        invalid.push({ rowNumber: idx + 2, reason: 'يجب توفير الرقم القومي أو كود الطالب على الأقل', rowData: row });
-        return;
-      }
+    const name = String(norm['الاسمبالكامل'] || norm['اسمالطالببالكامل'] || norm['اسمالطالب'] || norm['اسم'] || norm['الاسم'] || norm['إسمالطالب'] || norm['name'] || '').trim();
 
-      // إذا تم إدخال النوع نصياً، نعتمد عليه
-      if (genderRaw) {
-        const gLow = String(genderRaw).toLowerCase();
-        if (gLow.includes('انثى') || gLow.includes('أنثى') || gLow.includes('بنات') || gLow === 'female' || gLow === 'f') {
-          gender = 'female';
-        } else if (gLow.includes('ذكر') || gLow.includes('بنين') || gLow === 'male' || gLow === 'm') {
-          gender = 'male';
-        }
-      }
-
-      const college = normalizeCollegeName(collegeRaw) || 'كلية التمريض';
-      const year = normalizeYearName(yearRaw);
-      const specialization = specRaw ? String(specRaw).trim() : college;
-
-      // فحص هل الطالب مسجل مسبقاً في قاعدة البيانات
-      const isExisting = (nationalId && existingNids.has(nationalId)) || (code && existingCodes.has(code));
-      if (isExisting) {
-        duplicates.push({ rowNumber: idx + 2, reason: 'طالب مسجل مسبقاً (سيتم تحديث بياناته وفرقته مع الاحتفاظ بموقفه ودوراته السابقة)', rowData: row });
-      }
-
-      // فحص هل الملف يحتوي على موقف مسبق للتربية العسكرية
-      let status = 'not_attended'; // الافتراضي للطلاب الجدد: لم يدخل أي دورة بعد (مستهدف جديد)
-      let course = '';
-      let grade = '';
-      let hasExplicitStatus = false;
-
-      const rawStatus = String(norm['النتيجه'] || norm['النتيجة'] || norm['موقفالتربيهالعسكريه'] || norm['status'] || '').toLowerCase();
-      if (rawStatus.includes('ناجح') || rawStatus.includes('حاصل') || rawStatus.includes('اجتاز') || rawStatus.includes('pass')) {
-        status = 'pass';
-        hasExplicitStatus = true;
-      } else if (rawStatus.includes('راسب') || rawStatus.includes('باق') || rawStatus.includes('لم يجتز') || rawStatus.includes('fail')) {
-        status = 'fail';
-        hasExplicitStatus = true;
-      }
-
-      valid.push({
-        code: code || `2024${String(idx + 1).padStart(4, '0')}`,
-        nationalId,
-        name,
-        gender,
-        college,
-        specialization,
-        year,
-        academicYear,
-        phone,
-        status,
-        course,
-        grade,
-        isExisting: !!isExisting,
-        hasExplicitStatus
-      });
-
-    } else if (uploadType === 'results') {
-      // رفع ملف نتائج الدورات (متوافق مع ملفات دورات جامعة اللوتس: كود الطالب، الرقم القومي، الاسم، الناجح، اسم الدورة)
-      let code = String(norm['كودالطالب'] || norm['كود'] || norm['الكود'] || norm['الرقمالجامعي'] || norm['code'] || norm['id'] || '').trim();
-      let nationalId = String(norm['الرقمالقومي'] || norm['رقمقومي'] || norm['القومي'] || norm['nationalid'] || norm['nid'] || '').trim();
-      let identifier = nationalId || code;
-      let name = norm['الاسمبالكامل'] || norm['اسمالطالب'] || norm['اسم'] || norm['الاسم'] || norm['name'] || '';
-      let collegeRaw = norm['تخصصرئيسي'] || norm['التخصص'] || norm['الكليه'] || norm['كليه'] || norm['college'] || '';
-      let courseName = norm['اسمالدوره'] || norm['إسمالدوره'] || norm['الدوره'] || norm['رقمالدوره'] || norm['course'] || '';
-      let startDate = norm['تاريخبدءالدوره'] || norm['تاريخالبدايه'] || norm['تاريخالبدء'] || norm['startdate'] || '';
-      let endDate = norm['تاريخاتمامالدوره'] || norm['تاريخالنهايه'] || norm['تاريخالانتهاء'] || norm['enddate'] || '';
-      let grade = norm['التقدير'] || norm['الدرجه'] || norm['grade'] || '';
-      let genderRaw = norm['النوعالمجموعه'] || norm['النوع'] || norm['الجنس'] || norm['gender'] || '';
-      let yearRaw = norm['الفرقه'] || norm['الفرقهالدراسيه'] || norm['السنه'] || '';
-
-      if (!identifier && !name) {
-        invalid.push({ rowNumber: idx + 2, reason: 'معرف الطالب (الرقم القومي أو الكود أو الاسم) مفقود', rowData: row });
-        return;
-      }
-
-      let isPass = false;
-      const najahCol = String(norm['الناجح'] || norm['ناجح'] || '').toLowerCase().trim();
-      const rasebCol = String(norm['راسب'] || '').toLowerCase().trim();
-      const gheyabCol = String(norm['غياب'] || '').toLowerCase().trim();
-      const statusRaw = String(norm['النتيجه'] || norm['موقفالتربيهالعسكريه'] || norm['status'] || '').toLowerCase();
-
-      if (najahCol.includes('اجتاز') || najahCol === 'true' || najahCol === '1' || najahCol === 'نعم' || najahCol === 'ناجح') {
-        isPass = true;
-      } else if (najahCol.includes('لم يجتز') || rasebCol === 'true' || gheyabCol === 'true' || rasebCol === '1' || gheyabCol === '1') {
-        isPass = false;
-      } else if (statusRaw.includes('ناجح') || statusRaw.includes('حاصل') || statusRaw.includes('اجتاز') || statusRaw.includes('pass')) {
-        isPass = true;
-      } else if (statusRaw.includes('راسب') || statusRaw.includes('غير حاصل') || statusRaw.includes('لم يجتز') || statusRaw.includes('fail') || statusRaw.includes('غياب')) {
-        isPass = false;
-      } else {
-        const gLow = String(grade).toLowerCase();
-        if (gLow.includes('امتياز') || gLow.includes('جيد') || gLow.includes('مقبول')) isPass = true;
-      }
-
-      // فحص هل الطالب موجود مسبقاً في قاعدة البيانات
-      const matchedStudent = AppState.students.find(s => 
-        (nationalId && s.nationalId && s.nationalId === nationalId) ||
-        (code && s.code && s.code === code) ||
-        (identifier && (s.nationalId === identifier || s.code === identifier)) ||
-        (name && s.name && s.name.trim() === name.trim())
-      );
-
-      let gender = 'male';
-      if (genderRaw) {
-        const gLow = String(genderRaw).toLowerCase();
-        if (gLow.includes('اناث') || gLow.includes('انثى') || gLow.includes('أنثى') || gLow.includes('بنات') || gLow === 'female') {
-          gender = 'female';
-        }
-      } else if (nationalId) {
-        const nidParsed = parseEgyptianNationalId(nationalId);
-        if (nidParsed.isValid) gender = nidParsed.gender;
-      } else if (matchedStudent) {
-        gender = matchedStudent.gender;
-      }
-
-      const college = normalizeCollegeName(collegeRaw) || (matchedStudent ? matchedStudent.college : 'كلية الطب البشري');
-      const year = normalizeYearName(yearRaw || (matchedStudent ? matchedStudent.year : 'السنة الاولى'));
-
-      valid.push({
-        identifier: identifier || (matchedStudent ? (matchedStudent.code || matchedStudent.nationalId) : `temp_${idx}`),
-        code: code || (matchedStudent ? matchedStudent.code : ''),
-        nationalId: nationalId || (matchedStudent ? matchedStudent.nationalId : ''),
-        name: name || (matchedStudent ? matchedStudent.name : ''),
-        college,
-        specialization: collegeRaw || college,
-        year,
-        gender,
-        status: isPass ? 'pass' : 'fail',
-        course: courseName || 'دورة التربية العسكرية',
-        grade: grade || (isPass ? 'اجتياز' : 'راسب'),
-        startDate,
-        endDate,
-        isExisting: !!matchedStudent,
-        matchedStudentName: matchedStudent ? matchedStudent.name : ''
-      });
+    // التحقق من وجود معرف أساسي أو اسم
+    if (!nationalId && !code && !name) {
+      invalid.push({ rowNumber: idx + 2, reason: 'صف فارغ أو ينقصه الاسم والرقم القومي والكود', rowData: row });
+      return;
     }
+
+    // 2. فحص هل الطالب موجود مسبقاً في قاعدة بيانات النظام
+    let matchedStudent = null;
+    let matchedIndex = -1;
+
+    if (nationalId && nationalId.length >= 10) {
+      matchedIndex = AppState.students.findIndex(s => cleanNationalId(s.nationalId) === nationalId);
+    }
+    if (matchedIndex === -1 && code) {
+      matchedIndex = AppState.students.findIndex(s => cleanStudentCode(s.code) === code);
+    }
+    if (matchedIndex === -1 && name && name.length >= 6) {
+      const normName = normalizeKey(name);
+      matchedIndex = AppState.students.findIndex(s => normalizeKey(s.name) === normName);
+    }
+
+    if (matchedIndex >= 0) {
+      matchedStudent = AppState.students[matchedIndex];
+    }
+
+    // 3. استخراج النوع (Gender)
+    let gender = 'male';
+    const genderRaw = String(norm['النوع'] || norm['الجنس'] || norm['النوعالمجموعه'] || norm['gender'] || '').toLowerCase();
+    if (genderRaw.includes('انثى') || genderRaw.includes('أنثى') || genderRaw.includes('بنات') || genderRaw === 'female') {
+      gender = 'female';
+    } else if (genderRaw.includes('ذكر') || genderRaw.includes('بنين') || genderRaw === 'male') {
+      gender = 'male';
+    } else if (nationalId && nationalId.length === 14) {
+      const parsed = parseEgyptianNationalId(nationalId);
+      if (parsed.isValid) gender = parsed.gender;
+    } else if (matchedStudent) {
+      gender = matchedStudent.gender;
+    }
+
+    // 4. استخراج الكلية والفرقة والتخصص والهاتف
+    const collegeRaw = norm['الكليه'] || norm['الكلية'] || norm['كليه'] || norm['كلية'] || norm['تخصصرئيسي'] || norm['التخصص'] || norm['college'] || '';
+    const specRaw = norm['تخصصرئيسي'] || norm['التخصص'] || norm['الشعبه'] || norm['الشعبة'] || '';
+    const yearRaw = norm['الفرقه'] || norm['الفرقة'] || norm['الفرقهالدراسيه'] || norm['السنه'] || norm['السنة'] || norm['level'] || norm['year'] || '';
+    const academicYear = norm['العامالدراسي'] || norm['العامالجامعي'] || norm['العام'] || norm['academicyear'] || '2024/2025';
+    const phone = String(norm['رقمالهاتف'] || norm['الهاتف'] || norm['الموبايل'] || norm['phone'] || norm['mobile'] || '').trim();
+
+    let college = normalizeCollegeName(collegeRaw || specRaw);
+    if (!college && matchedStudent) college = matchedStudent.college;
+    if (!college) college = 'كلية التمريض';
+
+    let year = normalizeYearName(yearRaw);
+    if (!year && matchedStudent) year = matchedStudent.year;
+    if (!year) year = 'السنة الاولى';
+
+    let specialization = specRaw ? String(specRaw).trim() : (matchedStudent ? matchedStudent.specialization : college);
+
+    // 5. استخراج بيانات الدورة والنتيجة وتاريخها
+    let courseName = String(norm['اسمالدوره'] || norm['إسمالدوره'] || norm['اسمالدورة'] || norm['إسمالدورة'] || norm['الدوره'] || norm['الدورة'] || norm['رقمالدوره'] || norm['رقمالدورة'] || norm['course'] || '').trim();
+    if (courseName && /^\d+$/.test(courseName)) {
+      courseName = `دورة ${courseName}`;
+    }
+
+    const startDate = cleanDateStr(norm['تاريخبدءالدوره'] || norm['تاريخبدءالدورة'] || norm['تاريخالبدء'] || norm['تاريخالبدايه'] || norm['startdate'] || '');
+    const endDate = cleanDateStr(norm['تاريخاتمامالدوره'] || norm['تاريخاتمامالدورة'] || norm['تاريخالانتهاء'] || norm['تاريخالنهايه'] || norm['enddate'] || '');
+    let grade = String(norm['التقدير'] || norm['الدرجه'] || norm['grade'] || '').trim();
+
+    // فحص النتيجة (ناجح / راسب / حاصل / غياب)
+    let hasResult = false;
+    let rowStatus = 'not_attended';
+
+    const najahCol = String(norm['الناجح'] || norm['ناجح'] || '').toLowerCase().trim();
+    const rasebCol = String(norm['راسب'] || '').toLowerCase().trim();
+    const gheyabCol = String(norm['غياب'] || '').toLowerCase().trim();
+    const statusRaw = String(norm['النتيجه'] || norm['النتيجة'] || norm['موقفالتربيهالعسكريه'] || norm['موقفالتربيةالعسكرية'] || norm['الموقف'] || norm['حالةالنجاح'] || norm['status'] || '').toLowerCase().trim();
+
+    if (najahCol.includes('اجتاز') || najahCol === 'true' || najahCol === '1' || najahCol === 'نعم' || najahCol === 'ناجح') {
+      rowStatus = 'pass';
+      hasResult = true;
+    } else if (najahCol.includes('لم يجتز') || rasebCol === 'true' || gheyabCol === 'true' || rasebCol === '1' || gheyabCol === '1' || rasebCol === 'نعم' || gheyabCol === 'نعم') {
+      rowStatus = 'fail';
+      hasResult = true;
+    } else if (statusRaw.includes('ناجح') || statusRaw.includes('حاصل') || statusRaw.includes('اجتاز') || statusRaw.includes('معفى') || statusRaw.includes('اعفاء') || statusRaw.includes('pass')) {
+      rowStatus = 'pass';
+      hasResult = true;
+    } else if (statusRaw.includes('راسب') || statusRaw.includes('غير حاصل') || statusRaw.includes('لم يجتز') || statusRaw.includes('fail') || statusRaw.includes('غياب') || statusRaw.includes('باق')) {
+      rowStatus = 'fail';
+      hasResult = true;
+    } else if (grade) {
+      const gLow = grade.toLowerCase();
+      if (gLow.includes('امتياز') || gLow.includes('جيد') || gLow.includes('مقبول') || gLow.includes('اجتياز') || gLow.includes('معفى')) {
+        rowStatus = 'pass';
+        hasResult = true;
+      } else if (gLow.includes('راسب') || gLow.includes('غياب') || gLow.includes('لم يجتز')) {
+        rowStatus = 'fail';
+        hasResult = true;
+      }
+    } else if (courseName) {
+      // ملف دورة يتضمن أسماء المشاركين دون تحديد رسوب
+      if (courseName.includes('اعفاء')) {
+        rowStatus = 'pass';
+        grade = grade || 'معفى';
+        hasResult = true;
+      } else {
+        rowStatus = 'pass';
+        hasResult = true;
+      }
+    }
+
+    if (hasResult && !grade) {
+      grade = rowStatus === 'pass' ? `اجتياز (${courseName || 'الدورة'})` : 'راسب';
+    }
+
+    valid.push({
+      rowNumber: idx + 2,
+      nationalId: nationalId || (matchedStudent ? matchedStudent.nationalId : ''),
+      code: code || (matchedStudent ? matchedStudent.code : ''),
+      name: name || (matchedStudent ? matchedStudent.name : 'طالب مسجل'),
+      gender,
+      college,
+      specialization,
+      year,
+      academicYear,
+      phone: phone || (matchedStudent ? matchedStudent.phone : ''),
+      status: hasResult ? rowStatus : (matchedStudent ? matchedStudent.status : 'not_attended'),
+      hasResult,
+      course: courseName || (matchedStudent ? matchedStudent.course : ''),
+      grade: grade || (matchedStudent ? matchedStudent.grade : ''),
+      startDate: startDate || (matchedStudent ? matchedStudent.startDate : ''),
+      endDate: endDate || (matchedStudent ? matchedStudent.endDate : ''),
+      isExisting: !!matchedStudent,
+      matchedIndex,
+      matchedStudentName: matchedStudent ? matchedStudent.name : ''
+    });
   });
 
   AppState.pendingUpload.validRows = valid;
   AppState.pendingUpload.invalidRows = invalid;
-  AppState.pendingUpload.duplicateRows = duplicates;
+  AppState.pendingUpload.duplicateRows = [];
 
   showUploadPreviewModal(uploadType);
 }
@@ -2938,159 +2983,85 @@ function showUploadPreviewModal(uploadType) {
   const modal = document.getElementById('uploadPreviewModal');
   const valid = AppState.pendingUpload.validRows || [];
   const invalid = AppState.pendingUpload.invalidRows || [];
-  const dups = AppState.pendingUpload.duplicateRows || [];
 
   const existingCount = valid.filter(r => r.isExisting).length;
   const newCount = valid.filter(r => !r.isExisting).length;
+  const totalAfter = AppState.students.length + newCount;
 
-  if (uploadType === 'students') {
-    document.getElementById('uploadStatsSummary').innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
-        <div class="metric-card success" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">الصفوف الصالحة بالملف</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--success-text);">${valid.length.toLocaleString('ar-EG')} صف</div>
-          </div>
-        </div>
-        <div class="metric-card info" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">طلاب جدد سيتم إضافتهم</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--info-text);">${newCount.toLocaleString('ar-EG')} طالب</div>
-          </div>
-        </div>
-        <div class="metric-card gold" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">طلاب مسجلون (تحديث بياناتهم)</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--gold-light);">${existingCount.toLocaleString('ar-EG')} طالب</div>
-          </div>
-        </div>
-        <div class="metric-card danger" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">الصفوف المرفوضة (غير المطابقة)</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--danger-text);">${invalid.length.toLocaleString('ar-EG')} صف</div>
-          </div>
+  document.getElementById('uploadStatsSummary').innerHTML = `
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
+      <div class="metric-card success" style="padding: 12px;">
+        <div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">إجمالي صفوف الملف الصالحة</div>
+          <div style="font-size: 1.4rem; font-weight:800; color: var(--success-text);">${valid.length.toLocaleString('ar-EG')} صف</div>
         </div>
       </div>
-    `;
-  } else {
-    const passCount = valid.filter(r => r.status === 'pass').length;
-    const failCount = valid.filter(r => r.status === 'fail').length;
-    document.getElementById('uploadStatsSummary').innerHTML = `
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px;">
-        <div class="metric-card success" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">إجمالي نتائج الدورات</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--success-text);">${valid.length.toLocaleString('ar-EG')} نتيجة</div>
-          </div>
-        </div>
-        <div class="metric-card success" style="padding: 12px; background: var(--success-light);">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--success-text);">ناجحون (اجتازوا الدورة)</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--success-text);">${passCount.toLocaleString('ar-EG')} طالب</div>
-          </div>
-        </div>
-        <div class="metric-card danger" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">راسبون / لم يجتازوا</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--danger-text);">${failCount.toLocaleString('ar-EG')} طالب</div>
-          </div>
-        </div>
-        <div class="metric-card info" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">مطابق لطلاب مقيدين</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--info-text);">${existingCount.toLocaleString('ar-EG')} طالب</div>
-          </div>
-        </div>
-        <div class="metric-card gold" style="padding: 12px;">
-          <div>
-            <div style="font-size: 0.8rem; color: var(--text-muted);">طلاب جدد سيتم ضمهم</div>
-            <div style="font-size: 1.4rem; font-weight:800; color: var(--gold-dark);">${newCount.toLocaleString('ar-EG')} طالب</div>
-          </div>
+      <div class="metric-card gold" style="padding: 12px;">
+        <div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">تعديل وتحديث (نفس الرقم القومي)</div>
+          <div style="font-size: 1.4rem; font-weight:800; color: var(--gold-light);">${existingCount.toLocaleString('ar-EG')} طالب</div>
         </div>
       </div>
-    `;
-  }
+      <div class="metric-card info" style="padding: 12px;">
+        <div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">إضافة جديد (رقم قومي جديد)</div>
+          <div style="font-size: 1.4rem; font-weight:800; color: var(--info-text);">${newCount.toLocaleString('ar-EG')} طالب</div>
+        </div>
+      </div>
+      <div class="metric-card" style="padding: 12px; border: 1.5px solid var(--primary); background: var(--bg-alt);">
+        <div>
+          <div style="font-size: 0.8rem; color: var(--text-muted);">إجمالي الطلاب بالنظام بعد الحفظ</div>
+          <div style="font-size: 1.4rem; font-weight:800; color: var(--primary);">${totalAfter.toLocaleString('ar-EG')} طالب</div>
+        </div>
+      </div>
+    </div>
+  `;
 
-  // معاينة الصفوف
+  // معاينة العناوين والصفوف
   const thead = document.getElementById('uploadPreviewTableHead');
   if (thead) {
-    if (uploadType === 'students') {
-      thead.innerHTML = `
-        <tr>
-          <th>#</th>
-          <th>كود الطالب</th>
-          <th>الرقم القومي</th>
-          <th>الاسم</th>
-          <th>النوع</th>
-          <th>الكلية</th>
-          <th>الفرقة</th>
-          <th>حالة السجل</th>
-        </tr>
-      `;
-    } else {
-      thead.innerHTML = `
-        <tr>
-          <th>#</th>
-          <th>المعرف / الكود</th>
-          <th>الرقم القومي</th>
-          <th>اسم الطالب</th>
-          <th>الكلية</th>
-          <th>الدورة</th>
-          <th>النتيجة</th>
-          <th>حالة المعالجة</th>
-        </tr>
-      `;
-    }
+    thead.innerHTML = `
+      <tr>
+        <th>#</th>
+        <th>الرقم القومي</th>
+        <th>كود الطالب</th>
+        <th>اسم الطالب</th>
+        <th>الكلية</th>
+        <th>الدورة / التقدير</th>
+        <th>النتيجة</th>
+        <th>الإجراء الذكي بالرقم القومي</th>
+      </tr>
+    `;
   }
 
   const tbody = document.getElementById('uploadPreviewTableBody');
-  const sampleRows = valid.slice(0, 10);
+  const sampleRows = valid.slice(0, 12);
 
-  if (uploadType === 'students') {
-    tbody.innerHTML = sampleRows.map((r, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td><span class="code-pill">${escapeHtml(r.code || '-')}</span></td>
-        <td>${escapeHtml(r.nationalId || '-')}</td>
-        <td><strong>${escapeHtml(r.name || 'طالب مسجل')}</strong></td>
-        <td>${r.gender === 'male' ? 'ذكر' : 'أنثى'}</td>
-        <td>${escapeHtml(r.college || '-')}</td>
-        <td>${escapeHtml(r.year || '-')}</td>
-        <td>
-          ${r.isExisting 
-            ? '<span class="badge-status gold" style="font-size: 0.75rem;"><i class="fas fa-sync-alt"></i> طالب مسجل مسبقاً (تحديث)</span>' 
-            : '<span class="badge-status pass" style="font-size: 0.75rem;"><i class="fas fa-user-plus"></i> طالب جديد (إضافة)</span>'}
-        </td>
-      </tr>
-    `).join('');
-  } else {
-    tbody.innerHTML = sampleRows.map((r, i) => `
-      <tr>
-        <td>${i + 1}</td>
-        <td><span class="code-pill">${escapeHtml(r.code || r.identifier || '-')}</span></td>
-        <td>${escapeHtml(r.nationalId || '-')}</td>
-        <td><strong>${escapeHtml(r.name || r.matchedStudentName || 'طالب دورة')}</strong></td>
-        <td>${escapeHtml(r.college || '-')}</td>
-        <td><span style="font-size:0.8rem; font-weight:700;">${escapeHtml(r.course || '-')}</span></td>
-        <td>
-          <span class="badge-status ${r.status === 'pass' ? 'pass' : 'fail'}">
-            ${r.status === 'pass' ? 'حاصل (اجتياز)' : 'غير حاصل (لم يجتز)'}
-          </span>
-        </td>
-        <td>
-          ${r.isExisting 
-            ? '<span class="badge-status pass" style="font-size: 0.75rem;"><i class="fas fa-check"></i> مطابق لطالب مقيد</span>' 
-            : '<span class="badge-status gold" style="font-size: 0.75rem;"><i class="fas fa-plus-circle"></i> جديد سيتم ضمه</span>'}
-        </td>
-      </tr>
-    `).join('');
-  }
+  tbody.innerHTML = sampleRows.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><strong>${escapeHtml(r.nationalId || '-')}</strong></td>
+      <td><span class="code-pill">${escapeHtml(r.code || '-')}</span></td>
+      <td><strong>${escapeHtml(r.name || r.matchedStudentName || 'طالب مسجل')}</strong></td>
+      <td>${escapeHtml(r.college || '-')}</td>
+      <td><span style="font-size:0.8rem; font-weight:700;">${escapeHtml(r.course || r.grade || '-')}</span></td>
+      <td>
+        <span class="badge-status ${r.status === 'pass' ? 'pass' : (r.status === 'fail' ? 'fail' : 'not-attended')}">
+          ${r.status === 'pass' ? 'حاصل (اجتياز)' : (r.status === 'fail' ? 'غير حاصل (لم يجتز)' : 'لم يدخل بعد')}
+        </span>
+      </td>
+      <td>
+        ${r.isExisting 
+          ? '<span class="badge-status gold" style="font-size: 0.75rem;"><i class="fas fa-edit"></i> تعديل النتيجة (نفس الرقم القومي)</span>' 
+          : '<span class="badge-status pass" style="font-size: 0.75rem;"><i class="fas fa-user-plus"></i> إضافة طالب جديد للقاعدة</span>'}
+      </td>
+    </tr>
+  `).join('');
 
   modal.classList.add('active');
 }
 
 async function commitPendingUpload() {
-  const uploadType = AppState.pendingUpload.type;
   const valid = AppState.pendingUpload.validRows;
 
   if (!valid || valid.length === 0) {
@@ -3098,157 +3069,81 @@ async function commitPendingUpload() {
     return;
   }
 
-  const mergeModeRadio = document.querySelector('input[name="uploadMergeMode"]:checked');
-  const mergeMode = mergeModeRadio ? mergeModeRadio.value : 'append';
-
-  if (mergeMode === 'replace') {
-    const ok = confirm('تحذير شديد الأهمية:\nأنت اخترت وضع "استبدال كامل".\nسيتم حذف جميع الطلاب والنتائج المخزنة حالياً واستبدالها بهذا الملف فقط!\n\nهل أنت متأكد تماماً وتريد المتابعة؟');
-    if (!ok) return;
-  }
-
   const btn = document.getElementById('btnConfirmUpload');
   btn.disabled = true;
-  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري الحفظ في Firebase...';
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> جاري التعديل والحفظ في السحابة...';
 
   try {
-    if (mergeMode === 'replace') {
-      if (uploadType === 'students') {
-        AppState.students = valid.map(r => ({
-          code: r.code,
-          nationalId: r.nationalId,
-          name: r.name,
-          gender: r.gender,
-          college: r.college,
-          specialization: r.specialization || r.college,
-          year: r.year,
-          academicYear: r.academicYear || '2024/2025',
-          phone: r.phone || '',
-          status: r.status || 'not_attended',
-          course: r.course || '',
-          grade: r.grade || ''
-        }));
+    let updatedCount = 0;
+    let addedCount = 0;
+
+    valid.forEach(row => {
+      let matchedIndex = -1;
+
+      // 1. المطابقة الذكية بالرقم القومي أولاً
+      if (row.nationalId && row.nationalId.length >= 10) {
+        matchedIndex = AppState.students.findIndex(s => cleanNationalId(s.nationalId) === row.nationalId);
+      }
+      // 2. المطابقة بكود الطالب كخيار بديل
+      if (matchedIndex === -1 && row.code) {
+        matchedIndex = AppState.students.findIndex(s => cleanStudentCode(s.code) === row.code);
+      }
+      // 3. المطابقة بالاسم
+      if (matchedIndex === -1 && row.name && row.name.length >= 6) {
+        const normName = normalizeKey(row.name);
+        matchedIndex = AppState.students.findIndex(s => normalizeKey(s.name) === normName);
+      }
+
+      if (matchedIndex >= 0) {
+        // تعديل بيانات ونتيجة الطالب الموجود مسبقاً دون حذف أي بيانات قديمة
+        const prev = AppState.students[matchedIndex];
+        AppState.students[matchedIndex] = {
+          ...prev,
+          name: row.name || prev.name,
+          code: row.code || prev.code,
+          nationalId: row.nationalId || prev.nationalId,
+          gender: row.gender || prev.gender,
+          college: (row.college && row.college !== 'كلية التمريض' ? row.college : prev.college) || prev.college,
+          specialization: row.specialization || prev.specialization,
+          year: row.year || prev.year,
+          academicYear: row.academicYear || prev.academicYear,
+          phone: row.phone || prev.phone,
+          status: row.hasResult ? row.status : prev.status,
+          statusLabel: row.hasResult ? (row.status === 'pass' ? 'حاصل (اجتاز)' : 'غير حاصل (لم يجتز)') : (prev.statusLabel || (prev.status === 'pass' ? 'حاصل (اجتاز)' : 'لم يدخل')),
+          course: (row.hasResult && row.course) ? row.course : prev.course,
+          grade: (row.hasResult && row.grade) ? row.grade : (row.hasResult && row.status === 'pass' ? `اجتياز (${row.course || 'الدورة'})` : prev.grade),
+          startDate: (row.hasResult && row.startDate) ? row.startDate : (prev.startDate || ''),
+          endDate: (row.hasResult && row.endDate) ? row.endDate : (prev.endDate || '')
+        };
+        updatedCount++;
       } else {
-        AppState.students = valid.map(r => ({
-          code: r.code || r.identifier,
-          nationalId: r.nationalId || (r.identifier && r.identifier.length === 14 ? r.identifier : ''),
-          name: r.name || 'طالب مقيد',
-          gender: r.gender || 'male',
-          college: r.college || 'كلية الطب البشري',
-          specialization: r.specialization || r.college,
-          year: r.year || 'السنة الاولى',
-          academicYear: '2024/2025',
-          phone: '',
-          status: r.status,
-          course: r.course || '',
-          grade: r.grade || (r.status === 'pass' ? 'اجتياز' : 'راسب'),
-          startDate: r.startDate || '',
-          endDate: r.endDate || ''
-        }));
-      }
-      logAuditAction('استبدال قاعدة البيانات', `تم استبدال كامل قاعدة البيانات بـ ${AppState.students.length} سجل من ملف ${AppState.pendingUpload.fileName}`);
-    } else {
-      // وضع الإضافة والدمج الذكي (Append & Merge) - الوضع الموصى به
-      if (uploadType === 'students') {
-        let addedCount = 0;
-        let updatedCount = 0;
-
-        valid.forEach(newSt => {
-          const idx = AppState.students.findIndex(s =>
-            (newSt.nationalId && s.nationalId && s.nationalId === newSt.nationalId) ||
-            (newSt.code && s.code && s.code === newSt.code)
-          );
-
-          if (idx >= 0) {
-            // طالب موجود مسبقاً: تحديث البيانات مع الحفاظ التام على موقف ونتائج الدورات السابقة
-            const prev = AppState.students[idx];
-            AppState.students[idx] = {
-              ...prev,
-              name: newSt.name || prev.name,
-              gender: newSt.gender || prev.gender,
-              college: newSt.college || prev.college,
-              specialization: newSt.specialization || prev.specialization,
-              year: newSt.year || prev.year,
-              academicYear: newSt.academicYear || prev.academicYear,
-              phone: newSt.phone || prev.phone,
-              // نحتفظ بموقفه القديم ما لم يكن الملف الجديد يحتوي صراحة على نتيجة محددة
-              status: newSt.hasExplicitStatus ? newSt.status : prev.status,
-              course: newSt.course || prev.course,
-              grade: newSt.grade || prev.grade
-            };
-            updatedCount++;
-          } else {
-            // طالب جديد في فرقة جديدة أو دفعة جديدة
-            AppState.students.push({
-              code: newSt.code,
-              nationalId: newSt.nationalId,
-              name: newSt.name,
-              gender: newSt.gender,
-              college: newSt.college,
-              specialization: newSt.specialization || newSt.college,
-              year: newSt.year,
-              academicYear: newSt.academicYear || '2024/2025',
-              phone: newSt.phone || '',
-              status: newSt.status || 'not_attended',
-              course: newSt.course || '',
-              grade: newSt.grade || ''
-            });
-            addedCount++;
-          }
+        // إضافة طالب جديد برقم قومي جديد دون حذف أي طالب من الطلاب السابقين
+        AppState.students.push({
+          code: row.code || `2024${String(AppState.students.length + 1).padStart(4, '0')}`,
+          nationalId: row.nationalId,
+          name: row.name || `طالب مقيد جديد`,
+          gender: row.gender || 'male',
+          college: row.college || 'كلية التمريض',
+          specialization: row.specialization || row.college || 'عام',
+          year: row.year || 'السنة الاولى',
+          academicYear: row.academicYear || '2024/2025',
+          phone: row.phone || '',
+          status: row.hasResult ? row.status : (row.status || 'not_attended'),
+          statusLabel: row.hasResult ? (row.status === 'pass' ? 'حاصل (اجتاز)' : 'غير حاصل (لم يجتز)') : 'لم يدخل بعد',
+          course: row.course || '',
+          grade: row.grade || (row.status === 'pass' ? `اجتياز (${row.course || 'الدورة'})` : (row.status === 'fail' ? 'راسب' : '')),
+          startDate: row.startDate || '',
+          endDate: row.endDate || ''
         });
-
-        logAuditAction('دمج ملف طلاب', `تمت إضافة ${addedCount} طالب جديد وتحديث بيانات ${updatedCount} طالب من ملف ${AppState.pendingUpload.fileName}`);
-      } else if (uploadType === 'results') {
-        let matchedCount = 0;
-        let newAddedCount = 0;
-
-        valid.forEach(res => {
-          const student = AppState.students.find(s =>
-            (res.nationalId && s.nationalId && s.nationalId === res.nationalId) ||
-            (res.code && s.code && s.code === res.code) ||
-            (res.identifier && (s.nationalId === res.identifier || s.code === res.identifier)) ||
-            (res.name && s.name && s.name.trim() === res.name.trim())
-          );
-
-          if (student) {
-            student.status = res.status;
-            if (res.course) student.course = res.course;
-            if (res.grade) student.grade = res.grade;
-            if (res.startDate) student.startDate = res.startDate;
-            if (res.endDate) student.endDate = res.endDate;
-            if (!student.college && res.college) student.college = res.college;
-            if (!student.nationalId && res.nationalId) student.nationalId = res.nationalId;
-            if (!student.code && res.code) student.code = res.code;
-            matchedCount++;
-          } else {
-            // طالب في ملف الدورات لم يكن في كشف الطلاب الأصلي -> إضافته حتى لا تضيع نتيجته
-            AppState.students.push({
-              code: res.code || (res.identifier && res.identifier.length < 14 ? res.identifier : ''),
-              nationalId: res.nationalId || (res.identifier && res.identifier.length === 14 ? res.identifier : ''),
-              name: res.name || `طالب دورة ${res.course || ''}`,
-              gender: res.gender || 'male',
-              college: res.college || 'كلية الطب البشري',
-              specialization: res.specialization || res.college,
-              year: res.year || 'السنة الاولى',
-              academicYear: '2024/2025',
-              phone: '',
-              status: res.status,
-              course: res.course || '',
-              grade: res.grade || (res.status === 'pass' ? 'اجتياز' : 'راسب'),
-              startDate: res.startDate || '',
-              endDate: res.endDate || ''
-            });
-            newAddedCount++;
-          }
-        });
-
-        logAuditAction('دمج ملف نتائج', `تم تحديث نتائج ${matchedCount} طالب وإضافة ${newAddedCount} طالب من ملف ${AppState.pendingUpload.fileName}`);
+        addedCount++;
       }
-    }
+    });
 
+    logAuditAction('استيراد وتحديث إكسيل', `تم بالرقم القومي تعديل ${updatedCount} طالب وإضافة ${addedCount} طالب جديد من ملف ${AppState.pendingUpload.fileName} (إجمالي النظام: ${AppState.students.length})`);
     saveLocalState();
     await syncAllToFirebase();
 
-    showToast(`تم الحفظ بنجاح! إجمالي الطلاب المسجلين بالنظام الآن: ${AppState.students.length.toLocaleString('ar-EG')} طالب`, 'success');
+    showToast(`تم الحفظ بنجاح! تم تعديل وتحديث بيانات ${updatedCount.toLocaleString('ar-EG')} طالب، وإضافة ${addedCount.toLocaleString('ar-EG')} طالب جديد، وإجمالي النظام الآن: ${AppState.students.length.toLocaleString('ar-EG')} طالب محفوظين بالكامل.`, 'success');
     closeModal('uploadPreviewModal');
     refreshAllViews();
   } catch (err) {
@@ -3271,19 +3166,34 @@ function openAddStudentModal() {
 }
 
 function openEditStudentModal(identifier) {
-  const s = AppState.students.find(st => st.nationalId === identifier || st.code === identifier);
-  if (!s) return;
+  const cleanId = cleanNationalId(identifier);
+  const cleanCd = cleanStudentCode(identifier);
+
+  const s = AppState.students.find(st => 
+    (cleanId && cleanNationalId(st.nationalId) === cleanId) ||
+    (cleanCd && cleanStudentCode(st.code) === cleanCd) ||
+    st.nationalId === identifier || 
+    st.code === identifier
+  );
+  if (!s) {
+    showToast('لم يتم العثور على سجل الطالب المطلوب تعديله', 'error');
+    return;
+  }
 
   document.getElementById('studentModalTitle').textContent = 'تعديل بيانات الطالب';
-  document.getElementById('editStudentOriginalKey').value = identifier;
+  document.getElementById('editStudentOriginalKey').value = s.nationalId || s.code || identifier;
 
   document.getElementById('formStudentName').value = s.name || '';
   document.getElementById('formStudentNationalId').value = s.nationalId || '';
   document.getElementById('formStudentCode').value = s.code || '';
   document.getElementById('formStudentGender').value = s.gender || 'male';
-  document.getElementById('formStudentCollege').value = s.college || 'كلية التمريض';
+  
+  // ضبط الكلية والفرقة باستخدام التنسيق المعياري لكليات جامعة اللوتس
+  const normCol = normalizeCollegeName(s.college);
+  document.getElementById('formStudentCollege').value = normCol || s.college || 'كلية التمريض';
+  
   document.getElementById('formStudentSpecialization').value = s.specialization || '';
-  document.getElementById('formStudentYear').value = s.year || 'السنة الثانية';
+  document.getElementById('formStudentYear').value = normalizeYearName(s.year);
   document.getElementById('formStudentAcademicYear').value = s.academicYear || '2024/2025';
   document.getElementById('formStudentPhone').value = s.phone || '';
   document.getElementById('formStudentStatus').value = s.status || 'not_attended';
@@ -3296,83 +3206,168 @@ function openEditStudentModal(identifier) {
 function handleSaveStudentForm(e) {
   e.preventDefault();
 
-  const originalKey = document.getElementById('editStudentOriginalKey').value;
+  const originalKey = document.getElementById('editStudentOriginalKey').value.trim();
   const name = document.getElementById('formStudentName').value.trim();
-  const nationalId = document.getElementById('formStudentNationalId').value.trim();
-  const code = document.getElementById('formStudentCode').value.trim();
+  const rawNid = document.getElementById('formStudentNationalId').value.trim();
+  const nationalId = cleanNationalId(rawNid);
+  const rawCode = document.getElementById('formStudentCode').value.trim();
+  const code = cleanStudentCode(rawCode);
   const gender = document.getElementById('formStudentGender').value;
-  const college = document.getElementById('formStudentCollege').value;
+  const rawCollege = document.getElementById('formStudentCollege').value;
+  const college = normalizeCollegeName(rawCollege) || 'كلية التمريض';
   const specialization = document.getElementById('formStudentSpecialization').value.trim() || college;
-  const year = document.getElementById('formStudentYear').value;
+  const rawYear = document.getElementById('formStudentYear').value;
+  const year = normalizeYearName(rawYear);
   const academicYear = document.getElementById('formStudentAcademicYear').value.trim() || '2024/2025';
   const phone = document.getElementById('formStudentPhone').value.trim();
-  const status = document.getElementById('formStudentStatus').value;
-  const course = document.getElementById('formStudentCourse').value.trim() || (status === 'not_attended' ? 'لم يسجل بدورة حتى الآن' : '');
-  const grade = document.getElementById('formStudentGrade').value.trim();
+  const status = document.getElementById('formStudentStatus').value; // 'pass', 'fail', 'not_attended'
+  let course = document.getElementById('formStudentCourse').value.trim();
+  let grade = document.getElementById('formStudentGrade').value.trim();
 
   if (!name || (!nationalId && !code)) {
-    showToast('يرجى ملء اسم الطالب وتوفير الرقم القومي أو كود الطالب على الأقل', 'warning');
+    showToast('يرجى إدخال اسم الطالب وتوفير الرقم القومي أو كود الطالب على الأقل', 'warning');
     return;
   }
 
   if (nationalId) {
     const nidCheck = parseEgyptianNationalId(nationalId);
     if (!nidCheck.isValid) {
-      showToast(`تحذير في الرقم القومي: ${nidCheck.error}`, 'error');
+      showToast(`تنبيه في الرقم القومي: ${nidCheck.error}`, 'error');
       return;
     }
   }
 
-  const studentObj = {
-    code: code || `2024${Math.floor(1000 + Math.random() * 9000)}`,
-    nationalId,
-    name,
-    gender,
-    college,
-    specialization,
-    course,
-    year,
-    academicYear,
-    phone,
-    status,
-    grade: grade || (status === 'pass' ? 'اجتياز' : status === 'fail' ? 'راسب' : 'لم يؤدِ بعد')
-  };
+  // ضبط التقدير والدورة تلقائياً حسب الحالة إذا تُركت فارغة
+  if (status === 'pass') {
+    if (!course) course = 'دورة التربية العسكرية';
+    if (!grade) grade = 'اجتياز';
+  } else if (status === 'fail') {
+    if (!course) course = 'دورة التربية العسكرية';
+    if (!grade) grade = 'راسب';
+  } else {
+    if (!course) course = 'لم يسجل بدورة حتى الآن';
+    if (!grade) grade = 'لم يؤدِ بعد';
+  }
+
+  const statusLabel = status === 'pass' 
+    ? 'حاصل (اجتاز)' 
+    : (status === 'fail' ? 'غير حاصل (لم يجتز)' : 'لم يدخل بعد');
 
   if (originalKey) {
-    // تعديل
-    const idx = AppState.students.findIndex(s => s.nationalId === originalKey || s.code === originalKey);
+    // تعديل طالب حالي: مطابقة ذكية بالرقم القومي أو الكود
+    const cleanOrigKey = cleanNationalId(originalKey);
+    const cleanOrigCode = cleanStudentCode(originalKey);
+    
+    let idx = AppState.students.findIndex(s => 
+      (cleanOrigKey && cleanNationalId(s.nationalId) === cleanOrigKey) ||
+      (cleanOrigCode && cleanStudentCode(s.code) === cleanOrigCode) ||
+      s.nationalId === originalKey ||
+      s.code === originalKey
+    );
+
+    // فحص إضافي بالرقم القومي الجديد إن وُجد
+    if (idx === -1 && nationalId) {
+      idx = AppState.students.findIndex(s => cleanNationalId(s.nationalId) === nationalId);
+    }
+
     if (idx >= 0) {
-      AppState.students[idx] = studentObj;
-      logAuditAction('تعديل طالب', `تعديل بيانات الطالب: ${name} (${code || nationalId})`);
-      showToast('تم تحديث بيانات الطالب بنجاح', 'success');
+      const prev = AppState.students[idx];
+      const updatedStudent = {
+        ...prev,
+        code: code || prev.code || `2024${String(idx + 1).padStart(4, '0')}`,
+        nationalId: nationalId || prev.nationalId,
+        name,
+        gender,
+        college,
+        specialization,
+        course,
+        year,
+        academicYear,
+        phone,
+        status,
+        statusLabel,
+        grade
+      };
+
+      AppState.students[idx] = updatedStudent;
+      logAuditAction('تعديل طالب', `تعديل بيانات ونتيجة الطالب: ${name} (${updatedStudent.code || updatedStudent.nationalId}) - الموقف: ${statusLabel}`);
+      
+      // حفظ فوري في التخزين المحلي والسحابي
+      saveLocalState();
+      pushStudentToFirebase(updatedStudent);
+
+      showToast(`تم تعديل بيانات الطالب "${name}" بنجاح وتحديث كافة الإحصائيات والتقارير فورياً`, 'success');
+    } else {
+      showToast('تعذر العثور على سجل الطالب للتعديل', 'error');
+      return;
     }
   } else {
-    // إضافة جديد
-    // التحقق من التكرار
-    const exists = AppState.students.some(s => (nationalId && s.nationalId === nationalId) || (code && s.code === code));
+    // إضافة طالب جديد
+    const exists = AppState.students.some(s => 
+      (nationalId && cleanNationalId(s.nationalId) === nationalId) || 
+      (code && cleanStudentCode(s.code) === code)
+    );
     if (exists) {
       showToast('الرقم القومي أو كود الطالب مسجل بالفعل مسبقاً!', 'error');
       return;
     }
-    AppState.students.unshift(studentObj);
-    logAuditAction('إضافة طالب', `إضافة طالب جديد: ${name} (${code || nationalId})`);
-    showToast('تمت إضافة الطالب بنجاح', 'success');
+
+    const newStudent = {
+      code: code || `2024${String(AppState.students.length + 1).padStart(4, '0')}`,
+      nationalId,
+      name,
+      gender,
+      college,
+      specialization,
+      course,
+      year,
+      academicYear,
+      phone,
+      status,
+      statusLabel,
+      grade,
+      startDate: '',
+      endDate: ''
+    };
+
+    AppState.students.unshift(newStudent);
+    logAuditAction('إضافة طالب', `إضافة طالب جديد: ${name} (${newStudent.code || newStudent.nationalId})`);
+    
+    saveLocalState();
+    pushStudentToFirebase(newStudent);
+
+    showToast(`تمت إضافة الطالب "${name}" بنجاح وتحديث كافة الإحصائيات`, 'success');
   }
 
-  pushStudentToFirebase(studentObj);
   closeModal('studentModal');
+
+  // تحديث فوري لكافة المؤشرات والجداول والتقارير في جميع الشاشات
   refreshAllViews();
 }
 
 function confirmDeleteStudent(identifier) {
-  const s = AppState.students.find(st => st.nationalId === identifier || st.code === identifier);
+  const cleanId = cleanNationalId(identifier);
+  const cleanCd = cleanStudentCode(identifier);
+
+  const s = AppState.students.find(st => 
+    (cleanId && cleanNationalId(st.nationalId) === cleanId) ||
+    (cleanCd && cleanStudentCode(st.code) === cleanCd) ||
+    st.nationalId === identifier || 
+    st.code === identifier
+  );
   if (!s) return;
 
   if (confirm(`هل أنت متأكد تماماً من حذف بيانات الطالب:\n${s.name} (${s.code || s.nationalId})؟`)) {
-    AppState.students = AppState.students.filter(st => st.nationalId !== identifier && st.code !== identifier);
+    AppState.students = AppState.students.filter(st => 
+      cleanNationalId(st.nationalId) !== cleanId && 
+      cleanStudentCode(st.code) !== cleanCd &&
+      st.nationalId !== identifier && 
+      st.code !== identifier
+    );
     removeStudentFromFirebase(identifier);
     logAuditAction('حذف طالب', `حذف الطالب: ${s.name} (${identifier})`);
-    showToast('تم حذف الطالب بنجاح', 'info');
+    saveLocalState();
+    showToast('تم حذف الطالب بنجاح وتحديث الإحصائيات فوراً', 'info');
     refreshAllViews();
   }
 }
@@ -3593,6 +3588,9 @@ function openModal(modalId) {
 function closeModal(modalId) {
   const modal = document.getElementById(modalId);
   if (modal) modal.classList.remove('active');
+  if (modalId === 'cardDetailModal') {
+    AppState.activeCardModal = null;
+  }
 }
 
 // ============================================================================
@@ -3604,6 +3602,7 @@ let currentCardModalTitle = 'تفاصيل وبيانات الكشف';
 let currentCardModalSubtitle = 'كشف تفصيلي بالطلاب المسجلين';
 
 function openCardModal(cardType, customTitle = '', customSubtitle = '') {
+  AppState.activeCardModal = { cardType, customTitle, customSubtitle };
   let list = [];
   let defaultTitle = '';
   let defaultSubtitle = '';
@@ -3930,12 +3929,25 @@ window.exportCardModalToExcel = exportCardModalToExcel;
 window.printCardModalList = printCardModalList;
 window.openStudentDossier = openStudentDossier;
 
+function refreshCurrentCardModal() {
+  if (AppState.activeCardModal) {
+    const { cardType, customTitle, customSubtitle } = AppState.activeCardModal;
+    openCardModal(cardType, customTitle, customSubtitle);
+  }
+}
+
 function refreshAllViews() {
   populateSpecializationFilter();
   populateCourseFilter();
   renderDashboardStats();
   renderStudentsTable();
   renderSelectedReport();
+
+  // تحديث نافذة الكروت التفصيلية المنبثقة تلقائياً إذا كانت معروضة
+  const cardModalEl = document.getElementById('cardDetailModal');
+  if (cardModalEl && cardModalEl.classList.contains('active')) {
+    refreshCurrentCardModal();
+  }
 }
 
 // ============================================================================
