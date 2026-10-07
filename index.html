@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>نظام إدارة التربية العسكرية والتربية الوطنية - جامعة اللوتس بالمنيا</title>
+  <meta name="description" content="نظام ويب متكامل لإدارة ومتابعة شؤون ونتائج وإحصائيات التربية العسكرية بجامعة اللوتس بالمنيا - تصميم م. بولس سمير">
+
+  <!-- الخطوط العربية (Cairo & Tajawal) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;800;900&family=Tajawal:wght@400;500;700;900&display=swap" rel="stylesheet">
+
+  <!-- مكتبة الأيقونات Font Awesome 6 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.2/css/all.min.css">
+
+  <!-- ملف التنسيقات الرئيسي -->
+  <link rel="stylesheet" href="css/style.css">
+
+  <!-- مكتبة معالجة ملفات الإكسيل SheetJS -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+  <!-- مكتبة الرسوم البيانية Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+</head>
+<body>
+
+  <!-- ====================================================================
+       حاوية الطباعة الرسمية A4 (Print Report Container - في أعلى المستند مباشرة)
+       ==================================================================== -->
+  <div id="printReportContainer" class="print-report-container">
+    <!-- يتم إنشاؤها ديناميكياً قبل أمر الطباعة مباشرة -->
+  </div>
+
+  <!-- ====================================================================
+       الواجهة الرئيسية للتطبيق (Main App Interface - الأدمن المباشر)
+       ==================================================================== -->
+  <div id="appMainInterface" style="display: flex; flex: 1; flex-direction: column;">
+    
+    <!-- الترويسة الرئيسية (Header) -->
+    <header class="app-header">
+      <div class="header-top">
+        <div class="brand-section">
+          <div class="brand-logo-wrap">
+            <i class="fas fa-university"></i>
+          </div>
+          <div class="brand-text">
+            <h1>
+              جامعة اللوتس بالمنيا
+              <span class="univ-badge">تصميم مهندس بولس سمير</span>
+            </h1>
+            <p>نظام لإدارة التربية العسكرية والتربية الوطنية</p>
+          </div>
+        </div>
+
+        <div class="header-meta">
+          <!-- زر التبديل الاحترافي بين الوضع الداكن والوضع الفاتح -->
+          <button id="themeToggleBtn" class="theme-toggle-btn" type="button" onclick="toggleTheme()" title="التبديل بين الوضع الداكن والفاتح">
+            <i id="themeToggleIcon" class="fas fa-sun"></i>
+            <span id="themeToggleText">الوضع الفاتح</span>
+          </button>
+
+          <!-- حالة الاتصال بالنظام (علامة خضراء فقط) -->
+          <div id="dbStatusBadge" class="db-status-badge" title="متصل بالنظام">
+            <span id="dbStatusDot" class="status-dot online"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- شريط التبويبات والتنقل (Navigation Tabs) -->
+      <nav class="header-nav">
+        <button class="nav-tab active" data-tab="dashboardTab">
+          <i class="fas fa-chart-pie"></i>
+          لوحة الإحصائيات والمؤشرات
+        </button>
+
+        <button class="nav-tab" data-tab="studentsTab">
+          <i class="fas fa-user-graduate"></i>
+          سجل وشؤون الطلاب
+        </button>
+
+        <button class="nav-tab" data-tab="reportsTab">
+          <i class="fas fa-file-invoice"></i>
+          التقارير والإحصائيات الرسمية
+          <span class="badge">A4</span>
+        </button>
+
+        <button class="nav-tab admin-only admin-only-tab" data-tab="uploadTab">
+          <i class="fas fa-cloud-upload-alt"></i>
+          رفع واستيراد البيانات (Excel)
+        </button>
+
+        <button class="nav-tab admin-only admin-only-tab" data-tab="adminTab">
+          <i class="fas fa-database"></i>
+          إدارة قاعدة البيانات والنسخ الاحتياطي
+        </button>
+      </nav>
+    </header>
+
+    <!-- مساحة المحتوى الرئيسية -->
+    <main class="main-wrapper">
+
+      <!-- ================================================================
+           التبويب 1: لوحة الإحصائيات والمؤشرات (Dashboard Tab)
+           ================================================================ -->
+      <section id="dashboardTab" class="app-section active">
+        <!-- بطاقات المؤشرات الرقمية -->
+        <div class="stats-grid">
+          <div class="metric-card gold" id="cardMetricTotal" data-card-type="all" title="انقر لعرض كشف وتفاصيل جميع الطلاب" style="cursor: pointer;">
+            <div class="metric-icon-wrap">
+              <i class="fas fa-users"></i>
+            </div>
+            <div class="metric-content" style="flex:1;">
+              <div class="metric-title">إجمالي طلاب الكليات</div>
+              <div id="metricTotalStudents" class="metric-value">4,991</div>
+              <div class="metric-sub">إجمالي الطلاب المقيدين بالمنظومة</div>
+            </div>
+          </div>
+
+          <div class="metric-card success" id="cardMetricPassed" data-card-type="pass" title="انقر لعرض كشف وتفاصيل الطلاب الحاصلين" style="cursor: pointer;">
+            <div class="metric-icon-wrap">
+              <i class="fas fa-check-circle"></i>
+            </div>
+            <div class="metric-content" style="flex:1;">
+              <div class="metric-title">حاصل (اجتاز الدورة)</div>
+              <div id="metricTotalPassed" class="metric-value">3,906</div>
+              <div id="metricPassRate" class="metric-sub">اجتازوا دورة التربية العسكرية</div>
+            </div>
+          </div>
+
+          <div class="metric-card danger" id="cardMetricFailed" data-card-type="fail" title="انقر لعرض كشف وتفاصيل الطلاب الراسبين" style="cursor: pointer;">
+            <div class="metric-icon-wrap">
+              <i class="fas fa-times-circle"></i>
+            </div>
+            <div class="metric-content" style="flex:1;">
+              <div class="metric-title">لم يجتز (راسب / غياب)</div>
+              <div id="metricTotalFailed" class="metric-value">303</div>
+              <div id="metricFailRate" class="metric-sub">دخلوا ولم يجتازوا (باقون للإعادة)</div>
+            </div>
+          </div>
+
+          <div class="metric-card" id="cardMetricNotAttended" data-card-type="not_attended" style="border-right: 5px solid #f59e0b; cursor: pointer;" title="انقر لعرض كشف وتفاصيل من لم يدخلوا بعد">
+            <div class="metric-icon-wrap" style="background: var(--warning-light); color: var(--warning-text);">
+              <i class="fas fa-clock"></i>
+            </div>
+            <div class="metric-content" style="flex:1;">
+              <div class="metric-title">لم يدخلوا دورات بعد</div>
+              <div id="metricTotalNotAttended" class="metric-value">782</div>
+              <div id="metricNotAttendedRate" class="metric-sub">المستهدفون الجدد للدورات القادمة</div>
+            </div>
+          </div>
+
+          <div class="metric-card info" id="cardMetricMales" data-card-type="male" title="انقر لعرض كشف وتفاصيل الطلبة الذكور" style="cursor: pointer;">
+            <div class="metric-icon-wrap">
+              <i class="fas fa-mars"></i>
+            </div>
+            <div class="metric-content" style="flex:1;">
+              <div class="metric-title">إجمالي الطلبة الذكور</div>
+              <div id="metricTotalMales" class="metric-value">2,502</div>
+              <div id="metricMaleRate" class="metric-sub">الطلبة الذكور المقيدين بالجامعة</div>
+            </div>
+          </div>
+
+          <div class="metric-card female" id="cardMetricFemales" data-card-type="female" title="انقر لعرض كشف وتفاصيل الطالبات الإناث" style="cursor: pointer;">
+            <div class="metric-icon-wrap">
+              <i class="fas fa-venus"></i>
+            </div>
+            <div class="metric-content" style="flex:1;">
+              <div class="metric-title">إجمالي الطالبات الإناث</div>
+              <div id="metricTotalFemales" class="metric-value">2,489</div>
+              <div id="metricFemaleRate" class="metric-sub">الطالبات الإناث المقيدات بالجامعة</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- الجدول الإحصائي (ذكور/إناث × حاصل / لم يجتز / لم يدخل) -->
+        <div class="card" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="fas fa-table"></i>
+              الجدول الإحصائي  (مقارنة الحاصلين والراسبين والذين لم يدخلوا بعد)
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="custom-table" style="text-align: center;">
+              <thead>
+                <tr>
+                  <th style="text-align: right;">النوع / البيان</th>
+                  <th class="cell-pass">حاصل (اجتاز الدورة)</th>
+                  <th class="cell-fail">غير حاصل (لم يجتز - راسب/غياب)</th>
+                  <th class="cell-pending">لم يدخل أي دورة بعد (لم يؤدِ)</th>
+                  <th class="cell-total">الإجمالي الكلي للنوع</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="text-align: right;">
+                    <span class="badge-gender male"><i class="fas fa-mars"></i> الطلبة الذكور</span>
+                  </td>
+                  <td id="crossMalePassed" class="cell-pass" style="cursor: pointer;" onclick="openCardModal('male_pass')" title="انقر لعرض كشف الطلبة الذكور الحاصلين">0</td>
+                  <td id="crossMaleFailed" class="cell-fail" style="cursor: pointer;" onclick="openCardModal('male_fail')" title="انقر لعرض كشف الطلبة الذكور غير الحاصلين">0</td>
+                  <td id="crossMaleNotAttended" class="cell-pending" style="cursor: pointer;" onclick="openCardModal('male_not_attended')" title="انقر لعرض كشف الطلبة الذكور الذين لم يدخلوا دورات بعد">0</td>
+                  <td id="crossMaleTotal" class="cell-total" style="cursor: pointer;" onclick="openCardModal('male')" title="انقر لعرض إجمالي الطلبة الذكور المقيدين">0</td>
+                </tr>
+                <tr>
+                  <td style="text-align: right;">
+                    <span class="badge-gender female"><i class="fas fa-venus"></i> الطالبات الإناث</span>
+                  </td>
+                  <td id="crossFemalePassed" class="cell-pass" style="cursor: pointer;" onclick="openCardModal('female_pass')" title="انقر لعرض كشف الطالبات الإناث الحاصلات">0</td>
+                  <td id="crossFemaleFailed" class="cell-fail" style="cursor: pointer;" onclick="openCardModal('female_fail')" title="انقر لعرض كشف الطالبات الإناث غير الحاصلات">0</td>
+                  <td id="crossFemaleNotAttended" class="cell-pending" style="cursor: pointer;" onclick="openCardModal('female_not_attended')" title="انقر لعرض كشف الطالبات الإناث اللاتي لم يدخلن دورات بعد">0</td>
+                  <td id="crossFemaleTotal" class="cell-total" style="cursor: pointer;" onclick="openCardModal('female')" title="انقر لعرض إجمالي الطالبات الإناث المقيدات">0</td>
+                </tr>
+                <tr class="row-total" style="font-size: 1rem;">
+                  <td style="text-align: right;">الإجمـــــــــــــــــالي العام</td>
+                  <td id="crossTotalPassed" class="cell-pass" style="cursor: pointer;" onclick="openCardModal('pass')" title="انقر لعرض إجمالي الطلاب الحاصلين بالجامعة">0</td>
+                  <td id="crossTotalFailed" class="cell-fail" style="cursor: pointer;" onclick="openCardModal('fail')" title="انقر لعرض إجمالي الطلاب غير الحاصلين بالجامعة">0</td>
+                  <td id="crossTotalNotAttended" class="cell-pending" style="cursor: pointer;" onclick="openCardModal('not_attended')" title="انقر لعرض إجمالي الطلاب الذين لم يدخلوا دورات بعد">0</td>
+                  <td id="crossGrandTotal" style="color: var(--primary); font-weight: 900; cursor: pointer;" onclick="openCardModal('all')" title="انقر لعرض إجمالي طلاب الجامعة بالكامل">0</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- الرسوم البيانية التفاعلية (Chart.js) -->
+        <div class="charts-grid">
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i class="fas fa-chart-pie"></i>
+                موقف دورة التربية العسكرية (حاصل / غير حاصل / لم يدخل)
+              </div>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chartResultDoughnut"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i class="fas fa-venus-mars"></i>
+                التوزيع النسبي للطلاب حسب النوع (ذكور / إناث)
+              </div>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chartGenderDoughnut"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i class="fas fa-university"></i>
+                توزيع الطلاب وموقفهم عبر كليات جامعة اللوتس
+              </div>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chartCollegeBar"></canvas>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <div class="chart-header">
+              <div class="chart-title">
+                <i class="fas fa-layer-group"></i>
+                موقف الطلاب حسب الفرق الدراسية (السنة الأولى إلى السادسة)
+              </div>
+            </div>
+            <div class="chart-canvas-wrap">
+              <canvas id="chartLevelBar"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- جدول الإحصائية التفصيلية لجميع كليات جامعة اللوتس (7 كليات) -->
+        <div class="card" style="margin-top: 10px;">
+          <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div class="card-title">
+              <i class="fas fa-university"></i>
+              الموقف الإحصائي التراكمي لكليات جامعة اللوتس (4,991 طالباً وطالبة - مطابقة شاملة)
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button onclick="exportCurrentReportToExcel()" class="btn btn-outline btn-sm">
+                <i class="fas fa-file-excel" style="color: #10b981;"></i> تصدير Excel
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="custom-table" style="text-align: center;">
+              <thead>
+                <tr>
+                  <th style="width: 45px;">م</th>
+                  <th style="text-align: right;">اسم الكلية</th>
+                  <th>إجمالي الطلاب</th>
+                  <th class="cell-male">ذكور</th>
+                  <th class="cell-female">إناث</th>
+                  <th class="cell-pass">حاصل (اجتاز)</th>
+                  <th class="cell-fail">غير حاصل (راسب/غياب)</th>
+                  <th class="cell-pending">لم يدخل بعد (مستهدف)</th>
+                </tr>
+              </thead>
+              <tbody id="dashboardCollegeTableBody">
+                <!-- يتم الملء ديناميكياً بواسطة JavaScript -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           التبويب 2: سجل وشؤون الطلاب (Students Tab)
+           ================================================================ -->
+      <section id="studentsTab" class="app-section">
+        <div class="card">
+          <!-- شريط أدوات البحث والتصفية -->
+          <div class="table-controls">
+            <div class="search-box-wrap">
+              <i class="fas fa-search"></i>
+              <input type="text" id="studentSearchInput" placeholder="بحث فوري بالاسم، الكود، الرقم القومي، أو رقم الهاتف...">
+            </div>
+
+            <div class="filter-group">
+              <select id="filterCollege" class="select-filter">
+                <option value="">جميع الكليات</option>
+                <option value="كلية التمريض">كلية التمريض</option>
+                <option value="كلية الحاسبات والذكاء الاصطناعي">كلية الحاسبات والذكاء الاصطناعي</option>
+                <option value="كلية العلوم الصحية التطبيقية">كلية العلوم الصحية التطبيقية</option>
+                <option value="كلية إدارة الأعمال">كلية إدارة الأعمال</option>
+                <option value="كلية طب الفم والأسنان">كلية طب الفم والأسنان</option>
+                <option value="كلية العلاج الطبيعي">كلية العلاج الطبيعي</option>
+                <option value="كلية الهندسة">كلية الهندسة</option>
+                <option value="كلية الصيدلة">كلية الصيدلة</option>
+              </select>
+
+              <select id="filterSpecialization" class="select-filter">
+                <option value="">جميع التخصصات والشعب</option>
+              </select>
+
+              <select id="filterYear" class="select-filter">
+                <option value="">جميع الفرق</option>
+                <option value="السنة الاولى">السنة الأولى</option>
+                <option value="السنة الثانية">السنة الثانية</option>
+                <option value="السنة الثالثة">السنة الثالثة</option>
+              </select>
+
+              <select id="filterGender" class="select-filter">
+                <option value="">جميع الأنواع</option>
+                <option value="male">ذكور فقط</option>
+                <option value="female">إناث فقط</option>
+              </select>
+
+              <select id="filterStatus" class="select-filter" style="font-weight: 700; border-color: var(--gold);">
+                <option value="">جميع مواقف التربية العسكرية</option>
+                <option value="pass">حاصل (اجتاز الدورة)</option>
+                <option value="fail">غير حاصل (لم يجتز - راسب/غياب)</option>
+                <option value="not_attended">لم يدخل أي دورة بعد (المستهدفون الجدد)</option>
+              </select>
+
+              <select id="filterCourse" class="select-filter" style="font-weight: 700; border-color: var(--primary);">
+                <option value="">جميع أرقام وأسماء الدورات</option>
+              </select>
+            </div>
+
+            <div style="display: flex; gap: 8px;">
+              <button id="btnOpenAddStudentModal" class="btn btn-gold admin-only">
+                <i class="fas fa-user-plus"></i>
+                إضافة طالب جديد
+              </button>
+              <button onclick="exportCurrentReportToExcel()" class="btn btn-outline">
+                <i class="fas fa-file-excel" style="color: #10b981;"></i>
+                تصدير المعروض Excel
+              </button>
+            </div>
+          </div>
+
+          <!-- رأس معلومات الجدول -->
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span id="studentsCountBadge" class="badge-status pass" style="font-size: 0.85rem;">0 طالب</span>
+              <span id="tableShowingRange" style="font-size: 0.85rem; color: var(--text-muted);">عرض 0 - 0</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem;">
+              <span>عدد الصفوف:</span>
+              <select id="selectPageSize" class="select-filter" style="padding: 4px 10px;">
+                <option value="15">15</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+                <option value="10000">الكل</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- جدول بيانات الطلاب -->
+          <div class="table-responsive">
+            <table class="custom-table">
+              <thead>
+                <tr>
+                  <th style="width: 45px;">م</th>
+                  <th>كود الطالب</th>
+                  <th>الرقم القومي</th>
+                  <th>اسم الطالب بالكامل</th>
+                  <th>النوع</th>
+                  <th>الكلية</th>
+                  <th style="color: var(--gold); font-weight:800;">التخصص / الشعبة</th>
+                  <th>الفرقة</th>
+                  <th>موقف الدورة</th>
+                  <th>الدورة المقيد بها / المنجزة</th>
+                  <th style="text-align: center; width: 110px;">الإجراءات</th>
+                </tr>
+              </thead>
+              <tbody id="studentsTableBody">
+                <!-- يتم الملء ديناميكياً بواسطة JavaScript -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- شريط ترقيم الصفحات -->
+          <div class="pagination-wrapper">
+            <div class="pagination-info">نظام التربية العسكرية - جامعة اللوتس بالمنيا</div>
+            <div id="paginationButtons" class="pagination-controls">
+              <!-- أزرار الصفحات -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           التبويب 3: التقارير والإحصائيات الرسمية (Reports Tab)
+           ================================================================ -->
+      <section id="reportsTab" class="app-section">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="fas fa-file-invoice" style="color: var(--gold);"></i>
+              مركز إصدار التقارير والإحصائيات الرسمية المعتمدة
+            </div>
+
+            <div class="reports-action-buttons">
+              <!-- زر الطباعة A4 المباشرة -->
+              <button id="btnPrintReport" class="btn btn-gold">
+                <i class="fas fa-print"></i>
+                طباعة رسمية A4
+              </button>
+
+              <!-- زر التصدير لإكسيل -->
+              <button id="btnExportReportExcel" class="btn btn-outline">
+                <i class="fas fa-file-excel" style="color: #10b981;"></i>
+                تصدير Excel
+              </button>
+            </div>
+          </div>
+
+          <!-- شريط الفلاتر والخيارات المتقدمة للتقارير -->
+          <div class="reports-filter-bar">
+            <!-- سطر 1: نوع التقرير المطلوب -->
+            <div class="reports-filter-row primary-row">
+              <div class="filter-field report-select-field">
+                <label for="reportTypeSelector">
+                  <i class="fas fa-file-contract"></i>
+                  نموذج التقرير / الإحصائية المطلوب إصدارها:
+                </label>
+                <select id="reportTypeSelector" class="select-filter main-report-select">
+                  <option value="officialLetter" selected>📄 1. الإحصائية الرسمية المعتمدة (حاصل / غير حاصل / إجمالي)</option>
+                  <option value="detailedStatisticsLetter">📄 2. الإحصائية التفصيلية الشاملة (حاصل / غير حاصل / لم يسجل بعد)</option>
+                  <option value="passedStudents">📄 3. كشف الطلاب الحاصلين على الدورة (الناجحين)</option>
+                  <option value="failedStudents">📄 4. كشف الطلاب غير الحاصلين (الذين دخلوا ولم يجتازوا - باقون للإعادة)</option>
+                  <option value="notAttendedStudents">📄 5. كشف الطلاب الذين لم يدخلوا دورات بعد (المستهدفون الجدد)</option>
+                  <option value="allStudents">📄 6. كشف جميع الطلاب المقيدين بالنظام</option>
+                  <option value="collegeSummary">📄 7. التقرير الإحصائي المجمع لكليات وتخصصات الجامعة</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- سطر 2: شبكة الفلاتر التفاعلية المتعددة (بالكلية، الفرقة، النوع، الدورة، الموقف) -->
+            <div class="reports-filter-row secondary-row">
+              <!-- فلتر الكلية -->
+              <div class="filter-field">
+                <label for="reportCollegeFilter">
+                  <i class="fas fa-university"></i>
+                  الكلية:
+                </label>
+                <select id="reportCollegeFilter" class="select-filter">
+                  <option value="">جميع كليات الجامعة</option>
+                  <option value="كلية التمريض">كلية التمريض</option>
+                  <option value="كلية الحاسبات والذكاء الاصطناعي">كلية الحاسبات والذكاء الاصطناعي</option>
+                  <option value="كلية العلوم الصحية التطبيقية">كلية العلوم الصحية التطبيقية</option>
+                  <option value="كلية إدارة الأعمال">كلية إدارة الأعمال</option>
+                  <option value="كلية طب الفم والأسنان">كلية طب الفم والأسنان</option>
+                  <option value="كلية العلاج الطبيعي">كلية العلاج الطبيعي</option>
+                  <option value="كلية الهندسة">كلية الهندسة</option>
+                  <option value="كلية الصيدلة">كلية الصيدلة</option>
+                </select>
+              </div>
+
+              <!-- فلتر الفرقة الدراسية -->
+              <div class="filter-field">
+                <label for="reportYearFilter">
+                  <i class="fas fa-layer-group"></i>
+                  الفرقة الدراسية:
+                </label>
+                <select id="reportYearFilter" class="select-filter">
+                  <option value="">جميع الفرق الدراسية</option>
+                  <option value="السنة الاولى">السنة الأولى</option>
+                  <option value="السنة الثانية">السنة الثانية</option>
+                  <option value="السنة الثالثة">السنة الثالثة</option>
+                  <option value="السنة الرابعة">السنة الرابعة</option>
+                  <option value="السنة الخامسة">السنة الخامسة</option>
+                </select>
+              </div>
+
+              <!-- فلتر النوع -->
+              <div class="filter-field">
+                <label for="reportGenderFilter">
+                  <i class="fas fa-venus-mars"></i>
+                  النوع:
+                </label>
+                <select id="reportGenderFilter" class="select-filter">
+                  <option value="">جميع الطلاب (ذكور وإناث)</option>
+                  <option value="male">الذكور فقط</option>
+                  <option value="female">الإناث فقط</option>
+                </select>
+              </div>
+
+              <!-- فلتر موقف الدورة -->
+              <div class="filter-field">
+                <label for="reportStatusFilter">
+                  <i class="fas fa-check-double"></i>
+                  موقف الدورة:
+                </label>
+                <select id="reportStatusFilter" class="select-filter">
+                  <option value="">جميع الحالات</option>
+                  <option value="pass">حاصل (اجتاز الدورة)</option>
+                  <option value="fail">غير حاصل (لم يجتز)</option>
+                  <option value="not_attended">لم يدخل أي دورة بعد</option>
+                </select>
+              </div>
+
+              <!-- فلتر رقم / اسم الدورة -->
+              <div class="filter-field">
+                <label for="reportCourseFilter">
+                  <i class="fas fa-certificate"></i>
+                  الدورة المقيد بها:
+                </label>
+                <select id="reportCourseFilter" class="select-filter">
+                  <option value="">جميع الدورات</option>
+                </select>
+              </div>
+
+              <!-- زر إعادة ضبط الفلاتر -->
+              <div class="filter-field" style="align-self: flex-end;">
+                <button id="btnResetReportFilters" class="btn btn-outline" style="width: 100%; height: 38px; font-size: 0.82rem;" title="إعادة تعيين كافة الفلاتر والخيارات">
+                  <i class="fas fa-undo-alt"></i>
+                  إعادة ضبط الفلاتر
+                </button>
+              </div>
+            </div>
+
+            <!-- إشعار معلومات التصفية الحية (يظهر فقط عند تطبيق فلتر معين) -->
+            <div id="reportFilterStatusNotice" class="report-filter-notice" style="display: none;">
+              <i class="fas fa-filter" style="color: var(--gold);"></i>
+              <span id="reportFilterNoticeText"></span>
+            </div>
+          </div>
+
+          <!-- منطقة المعاينة الحية للتقرير المختار -->
+          <div id="reportPreviewArea" style="min-height: 400px;">
+            <!-- يتم تعبئته ديناميكياً بواسطة JavaScript -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           التبويب 4: رفع واستيراد الملفات (Upload Tab - للأدمن)
+           ================================================================ -->
+      <section id="uploadTab" class="app-section admin-only">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="fas fa-file-excel"></i>
+              رفع واستيراد ملفات الطلاب والنتائج دفعة واحدة
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 24px;">
+            <!-- بطاقة رفع ملف الطلاب -->
+            <div style="background: var(--bg-alt); padding: 22px; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+              <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--primary); margin-bottom: 6px;">
+                <i class="fas fa-user-plus" style="color: var(--gold);"></i>
+                1. رفع ملف بيانات جميع الطلاب
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+                يقبل ملفات Excel أو CSV تتضمن: الاسم، الرقم القومي، كود الطالب، الكلية، الفرقة، النوع، الهاتف.
+              </p>
+
+              <div id="dropzoneStudents" class="dropzone">
+                <i class="fas fa-cloud-upload-alt dropzone-icon"></i>
+                <div class="dropzone-text">
+                  <h4>اسحب وأفلت ملف الطلاب هنا أو اضغط للاختيار</h4>
+                  <p>يدعم ملفات (.xlsx, .xls, .csv)</p>
+                </div>
+                <input type="file" id="fileInputStudents" accept=".xlsx, .xls, .csv" style="display: none;">
+              </div>
+
+              <div style="margin-top: 14px; text-align: center;">
+                <a href="templates/قالب_رفع_بيانات_الطلاب.xlsx" download class="btn btn-outline btn-sm">
+                  <i class="fas fa-download"></i>
+                  تحميل نموذج إكسيل فارغ لبيانات الطلاب
+                </a>
+              </div>
+            </div>
+
+            <!-- بطاقة رفع ملف النتائج -->
+            <div style="background: var(--bg-alt); padding: 22px; border-radius: var(--radius-lg); border: 1px solid var(--border-color);">
+              <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--primary); margin-bottom: 6px;">
+                <i class="fas fa-award" style="color: var(--success);"></i>
+                2. رفع ملف نتائج دورات التربية العسكرية
+              </h3>
+              <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+                يقوم النظام بالربط التلقائي بالرقم القومي أو كود الطالب وتحديث موقف النجاح والتقدير فوراً.
+              </p>
+
+              <div id="dropzoneResults" class="dropzone">
+                <i class="fas fa-file-import dropzone-icon" style="color: var(--success);"></i>
+                <div class="dropzone-text">
+                  <h4>اسحب وأفلت ملف النتائج هنا أو اضغط للاختيار</h4>
+                  <p>يدعم ملفات (.xlsx, .xls, .csv)</p>
+                </div>
+                <input type="file" id="fileInputResults" accept=".xlsx, .xls, .csv" style="display: none;">
+              </div>
+
+              <div style="margin-top: 14px; text-align: center;">
+                <a href="templates/قالب_رفع_نتائج_التربية_العسكرية.xlsx" download class="btn btn-outline btn-sm">
+                  <i class="fas fa-download"></i>
+                  تحميل نموذج إكسيل فارغ لنتائج الدورة
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================================================================
+           التبويب 5: إدارة النظام والبيانات (Admin Tab - للأدمن)
+           ================================================================ -->
+      <section id="adminTab" class="app-section admin-only">
+        <div style="max-width: 860px; margin: 0 auto;">
+          <!-- النسخ الاحتياطي وإدارة البيانات -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">
+                <i class="fas fa-database"></i>
+                إدارة قاعدة البيانات والنسخ الاحتياطي
+              </div>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 14px;">
+              <div style="padding: 14px; background: var(--bg-alt); border-radius: var(--radius-md); border-right: 4px solid var(--info);">
+                <div style="font-weight: 700; font-size: 0.92rem; color: var(--primary);">قاعدة بيانات Firebase السحابية:</div>
+                <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 4px; word-break: break-all;">
+                  المسار السحابي المعزول: <code>/militaryEdu/</code><br>
+                  المشروع: <code>masrof2-9e67a</code>
+                </div>
+              </div>
+
+              <div>
+                <button id="btnExportBackupJSON" class="btn btn-primary" style="width: 100%;">
+                  <i class="fas fa-download"></i>
+                  تنزيل نسخة احتياطية كاملة من قاعدة البيانات (JSON)
+                </button>
+              </div>
+
+              <!-- منطقة العمليات الحساسة (Danger Zone) -->
+              <div style="margin-top: 10px; padding: 14px; border: 1px dashed var(--danger); border-radius: var(--radius-md); background: var(--danger-light);">
+                <div style="font-weight: 800; color: var(--danger); font-size: 0.9rem; margin-bottom: 6px;">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  منطقة العمليات الحساسة (Danger Zone):
+                </div>
+                <div style="display: flex; gap: 10px; margin-top: 10px;">
+                  <button id="btnDeleteBatchAcademicYear" class="btn btn-outline btn-sm" style="color: var(--danger); border-color: var(--danger); flex: 1;">
+                    <i class="fas fa-calendar-times"></i> حذف دفعة عام دراسي كامل
+                  </button>
+                  <button id="btnResetDatabaseTotal" class="btn btn-danger btn-sm" style="flex: 1;">
+                    <i class="fas fa-trash-alt"></i> مسح شامل لقاعدة البيانات
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- التذييل الرسمي للتطبيق (Footer) -->
+    <footer class="app-footer">
+      <div class="footer-inner">
+        <div>
+          جامعة اللوتس بالمنيا | نظام إدارة التربية العسكرية والتربية الوطنية
+        </div>
+        <div class="footer-designer">
+          تصميم مهندس بولس سمير
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <!-- ====================================================================
+       3. النوافذ المنبثقة (Modals)
+       ==================================================================== -->
+
+  <!-- نافذة تفاصيل كروت الإحصائيات (Card Detail Modal) -->
+  <div id="cardDetailModal" class="modal-overlay">
+    <div class="modal-card modal-xl">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div style="width: 38px; height: 38px; border-radius: var(--radius-md); background: rgba(223, 181, 71, 0.2); display: flex; align-items: center; justify-content: center; color: var(--gold-light); font-size: 1.2rem;">
+            <i class="fas fa-layer-group"></i>
+          </div>
+          <div>
+            <h3 id="cardModalTitle" style="margin: 0; font-size: 1.15rem; font-weight: 800; color: #ffffff;">تفاصيل وبيانات الكشف</h3>
+            <div id="cardModalSubtitle" style="font-size: 0.82rem; color: rgba(255, 255, 255, 0.75); margin-top: 2px;">كشف تفصيلي بالطلاب المسجلين</div>
+          </div>
+        </div>
+        <button class="modal-close-btn" data-close-modal="cardDetailModal" title="إغلاق">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+
+      <div class="modal-body" style="padding: 16px 20px;">
+        <!-- شريط التحكم الداخلي: بحث فوري وتصدير وطباعة -->
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;">
+          <div class="search-box-wrap" style="flex: 1; min-width: 260px;">
+            <i class="fas fa-search"></i>
+            <input type="text" id="cardModalSearchInput" placeholder="بحث فوري في هذا الكشف (بالاسم، الرقم القومي، الكود، الكلية)...">
+          </div>
+
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <button id="btnExportCardModalExcel" class="btn btn-outline btn-sm" style="font-weight: 700;">
+              <i class="fas fa-file-excel" style="color: #10b981;"></i>
+              تصدير Excel
+            </button>
+            <button id="btnPrintCardModal" class="btn btn-gold btn-sm" style="font-weight: 700;">
+              <i class="fas fa-print"></i>
+              طباعة الكشف A4
+            </button>
+          </div>
+        </div>
+
+        <!-- معلومات الكشف والعداد -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.85rem;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="cardModalCountBadge" class="badge-status pass" style="font-size: 0.85rem; padding: 4px 12px;">0 طالب</span>
+            <span id="cardModalShowingText" style="color: var(--text-muted);">إجمالي السجلات المطابقة</span>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--gold-dark); font-weight: 600;">
+            <i class="fas fa-info-circle"></i> يمكنك النقر على أي طالب لعرض بطاقته الشخصية
+          </div>
+        </div>
+
+        <!-- جدول بيانات الكارت التفاعلي -->
+        <div class="table-responsive" style="max-height: 460px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--radius-md);">
+          <table class="custom-table" style="font-size: 0.88rem; text-align: center;">
+            <thead style="position: sticky; top: 0; z-index: 2; background: var(--bg-alt); color: var(--primary);">
+              <tr>
+                <th style="width: 45px;">م</th>
+                <th>كود الطالب</th>
+                <th>الرقم القومي</th>
+                <th style="text-align: right;">اسم الطالب</th>
+                <th>النوع</th>
+                <th>الكلية</th>
+                <th>التخصص / الشعبة</th>
+                <th>الفرقة</th>
+                <th>موقف الدورة</th>
+                <th>الدورة / التقدير</th>
+              </tr>
+            </thead>
+            <tbody id="cardModalTableBody">
+              <!-- يتم الملء ديناميكياً بواسطة JavaScript -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center; padding: 12px 20px;">
+        <div style="font-size: 0.82rem; color: var(--text-muted);">
+          جامعة اللوتس بالمنيا | إدارة التربية العسكرية
+        </div>
+        <button class="btn btn-outline" data-close-modal="cardDetailModal">إغلاق النافذة</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- نافذة بطاقة الطالب (Dossier Modal) -->
+  <div id="studentDossierModal" class="modal-overlay">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>
+          <i class="fas fa-id-card"></i>
+          بطاقة وبيان حالة الطالب - التربية العسكرية
+        </h3>
+        <button class="modal-close-btn" data-close-modal="studentDossierModal">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body" id="studentDossierContent">
+        <!-- محتوى بطاقة الطالب -->
+      </div>
+      <div class="modal-footer">
+        <button id="btnPrintStudentCert" class="btn btn-gold">
+          <i class="fas fa-certificate"></i>
+          طباعة شهادة إتمام الدورة / بيان الحالة
+        </button>
+        <button class="btn btn-outline" data-close-modal="studentDossierModal">إغلاق</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- نافذة إضافة وتعديل طالب (Student Add/Edit Modal) -->
+  <div id="studentModal" class="modal-overlay">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 id="studentModalTitle">إضافة طالب جديد</h3>
+        <button class="modal-close-btn" data-close-modal="studentModal">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <form id="studentForm">
+        <div class="modal-body">
+          <input type="hidden" id="editStudentOriginalKey">
+          
+          <div class="form-grid">
+            <div class="form-group full-width">
+              <label class="form-label">
+                اسم الطالب رباعي: <span class="required">*</span>
+              </label>
+              <input type="text" id="formStudentName" class="form-input" placeholder="الاسم كاملاً باللغة العربية" required>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">
+                الرقم القومي (14 رقم): <span class="required">*</span>
+              </label>
+              <input type="text" id="formStudentNationalId" class="form-input" placeholder="الرقم القومي المصري" maxlength="14">
+              <span id="nationalIdHintText" class="form-hint">أدخل 14 رقماً للاستنتاج التلقائي لتاريخ الميلاد والمحافظة والنوع</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">كود الطالب الجامعي:</label>
+              <input type="text" id="formStudentCode" class="form-input" placeholder="مثال: 20241001">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">النوع: <span class="required">*</span></label>
+              <select id="formStudentGender" class="form-select" required>
+                <option value="male">ذكر</option>
+                <option value="female">أنثى</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">الكلية: <span class="required">*</span></label>
+              <select id="formStudentCollege" class="form-select" required>
+                <option value="كلية التمريض">كلية التمريض</option>
+                <option value="كلية الحاسبات والمعلومات والذكاء الاصطناعي">كلية الحاسبات والمعلومات والذكاء الاصطناعي</option>
+                <option value="كلية تكنولوجيا العلوم الصحية التطبيقية">كلية تكنولوجيا العلوم الصحية التطبيقية</option>
+                <option value="كلية إدارة الأعمال">كلية إدارة الأعمال</option>
+                <option value="كلية طب جراحة الفم والأسنان">كلية طب جراحة الفم والأسنان</option>
+                <option value="كلية العلاج الطبيعي">كلية العلاج الطبيعي</option>
+                <option value="كلية الهندسة">كلية الهندسة</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">التخصص / الشعبة:</label>
+              <input type="text" id="formStudentSpecialization" class="form-input" placeholder="مثال: هندسة البرمجيات، تكنولوجيا الأشعة...">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">الفرقة الدراسية: <span class="required">*</span></label>
+              <select id="formStudentYear" class="form-select" required>
+                <option value="السنة الاولى">السنة الأولى</option>
+                <option value="السنة الثانية" selected>السنة الثانية</option>
+                <option value="السنة الثالثة">السنة الثالثة</option>
+                <option value="السنة الرابعة">السنة الرابعة</option>
+                <option value="السنة الخامسة">السنة الخامسة</option>
+                <option value="السنة السادسة">السنة السادسة</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">العام الدراسي:</label>
+              <input type="text" id="formStudentAcademicYear" class="form-input" value="2024/2025">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">رقم الهاتف / الموبايل:</label>
+              <input type="text" id="formStudentPhone" class="form-input" placeholder="01xxxxxxxxx">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">موقف دورة التربية العسكرية: <span class="required">*</span></label>
+              <select id="formStudentStatus" class="form-select" required>
+                <option value="pass">حاصل (ناجح / اجتاز الدورة)</option>
+                <option value="fail">غير حاصل (لم يجتز - راسب/غياب)</option>
+                <option value="not_attended">لم يدخل أي دورة بعد (مستهدف جديد)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">رقم / اسم الدورة:</label>
+              <input type="text" id="formStudentCourse" class="form-input" placeholder="مثال: 45، 46، دورة فبراير-2026، لم يسجل...">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">التقدير:</label>
+              <input type="text" id="formStudentGrade" class="form-input" placeholder="مثال: ممتاز / جيد جداً / جيد / راسب">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-gold">
+            <i class="fas fa-save"></i>
+            حفظ البيانات
+          </button>
+          <button type="button" class="btn btn-outline" data-close-modal="studentModal">إلغاء</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- نافذة معاينة الرفع الجماعي (Upload Preview Modal) -->
+  <div id="uploadPreviewModal" class="modal-overlay">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>
+          <i class="fas fa-tasks"></i>
+          تقرير التحقق ومعاينة البيانات قبل الحفظ
+        </h3>
+        <button class="modal-close-btn" data-close-modal="uploadPreviewModal">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div id="uploadStatsSummary">
+          <!-- ملخص الصفوف الصالحة والمرفوضة والمكررة -->
+        </div>
+
+        <!-- خيار وضع الإضافة والدمج الذكي -->
+        <div style="background: var(--success-light); border: 1.5px solid rgba(16, 185, 129, 0.3); border-radius: var(--radius-md); padding: 14px 16px; margin-bottom: 16px;">
+          <div style="font-weight: 800; color: var(--success-text); font-size: 0.95rem; margin-bottom: 8px;">
+            <i class="fas fa-layer-group"></i> اختيار طريقة الحفظ والدمج:
+          </div>
+          <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 700; color: var(--text-main);">
+              <input type="radio" name="uploadMergeMode" value="append" checked style="accent-color: #10b981; width: 18px; height: 18px;">
+              <span>إضافة ودمج مع البيانات الحالية (بدون مسح القديم - مستحسن)</span>
+            </label>
+            <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-weight: 600; color: var(--danger);">
+              <input type="radio" name="uploadMergeMode" value="replace" style="accent-color: #ef4444; width: 18px; height: 18px;">
+              <span>استبدال كامل (مسح البيانات القديمة وحفظ الجديد فقط)</span>
+            </label>
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 6px;">
+            <i class="fas fa-shield-alt" style="color: var(--success);"></i> وضع الدمج الذكي يقوم بإضافة الطلاب الجدد، وتحديث نتائج الدورات لمن دخلوا، والحفاظ التام على بيانات ونتائج الدفعات السابقة.
+          </div>
+        </div>
+
+        <div style="font-weight: 700; margin-bottom: 8px; font-size: 0.9rem;">
+          عينة من الصفوف الصالحة التي سيتم حفظها:
+        </div>
+        <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+          <table class="custom-table">
+            <thead id="uploadPreviewTableHead">
+              <tr>
+                <th>#</th>
+                <th>كود الطالب</th>
+                <th>الرقم القومي</th>
+                <th>الاسم</th>
+                <th>النوع</th>
+                <th>الكلية</th>
+                <th>الفرقة</th>
+                <th>الموقف</th>
+              </tr>
+            </thead>
+            <tbody id="uploadPreviewTableBody">
+              <!-- عينة الصفوف -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="btnConfirmUpload" class="btn btn-gold">
+          <i class="fas fa-check-circle"></i>
+          تأكيد الحفظ والاعتماد في السحابة
+        </button>
+        <button class="btn btn-outline" data-close-modal="uploadPreviewModal">إلغاء الرفع</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- حاوية إشعارات التوست (Toast Container) -->
+  <div id="toastContainer" class="toast-container"></div>
+
+  <!-- ملف البيانات الاسترشادية النموذجية لجامعة اللوتس -->
+  <script src="js/sample-data.js"></script>
+
+  <!-- ملف المنطق والبرمجة الرئيسي -->
+  <script src="js/app.js"></script>
+</body>
+</html>
